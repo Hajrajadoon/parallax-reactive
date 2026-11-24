@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Parallax">
+  <title>Parallax</title>
+  <defs>
+    <linearGradient id="pxU" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6bbd"/><stop offset="1" stop-color="#ff2f97"/></linearGradient>
+    <linearGradient id="pxB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f86ff"/><stop offset="1" stop-color="#2450e6"/></linearGradient>
+  </defs>
+  <circle cx="18" cy="24" r="14" fill="url(#pxU)"/>
+  <circle cx="30" cy="24" r="14" fill="url(#pxB)"/>
+  <path d="M24 11.35 A14 14 0 0 1 24 36.65 A14 14 0 0 1 24 11.35 Z" fill="#b8ff3c"/>
+  <path d="M24 17.5 L26.2 24 L24 30.5 L21.8 24 Z" fill="#07080c"/>
+</svg>

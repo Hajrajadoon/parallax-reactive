@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Parallax · Live dashboard</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<meta property="og:image" content="og.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script src="config.js"></script>
+<style>
+  :root {
+    --bg: #07080c; --panel: #0e1118; --panel2: #131826; --line: #1f2636; --text: #e8ecf5; --mute: #7b8499;
+    --uni: #ff3fa4; --base: #2f6bff; --rx: #b8ff3c; --good: #36e39a; --bad: #ff5c6c; --warn: #ffc44d;
+    --mono: "JetBrains Mono", ui-monospace, monospace; --sans: "Space Grotesk", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(1200px 600px at 50% -200px, #141b2e 0%, var(--bg) 60%); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+  a { color: inherit; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo { width: 44px; height: 44px; position: relative; }
+  .logo span { position: absolute; width: 26px; height: 26px; border-radius: 50%; top: 9px; mix-blend-mode: screen; }
+  .logo span:first-child { left: 2px; background: var(--uni); }
+  .logo span:last-child { left: 16px; background: var(--base); }
+  h1 { font-size: 26px; letter-spacing: .28em; margin: 0; font-weight: 700; }
+  .tag { color: var(--mute); font-size: 13px; letter-spacing: .04em; }
+  .pill { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); display: inline-flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mute); }
+  .dot.live { background: var(--good); box-shadow: 0 0 10px var(--good); animation: pulse 1.6s infinite; }
+  .dot.busy { background: var(--warn); box-shadow: 0 0 10px var(--warn); animation: pulse .8s infinite; }
+  .dot.off { background: var(--bad); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .grid { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 16px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 16px; padding: 18px; position: relative; overflow: hidden; }
+  .card h3 { margin: 0 0 12px; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--mute); font-weight: 500; display: flex; justify-content: space-between; align-items: center; }
+  .venue.uni { border-top: 3px solid var(--uni); } .venue.base { border-top: 3px solid var(--base); }
+  .venue .chain { font-size: 20px; font-weight: 700; }
+  .price { font-family: var(--mono); font-size: 40px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -.02em; }
+  .price small { font-size: 14px; color: var(--mute); font-weight: 400; }
+  .badge { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #1b2232; color: var(--mute); }
+  .badge.cheap { background: rgba(54,227,154,.12); color: var(--good); }
+  .badge.rich { background: rgba(255,92,108,.12); color: var(--bad); }
+  .delta { font-family: var(--mono); font-size: 13px; color: var(--mute); }
+  .invbar-l { font-size: 11px; color: var(--mute); margin-top: 18px; letter-spacing: .06em; }
+  .invbar { height: 8px; background: #2a3142; border-radius: 6px; margin: 8px 0 6px; overflow: hidden; }
+  .invbar i { display: block; height: 100%; width: 50%; transition: width .6s; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+  .kv dt { color: var(--mute); } .kv dd { margin: 0; text-align: right; font-family: var(--mono); }
+  .flash { animation: flash .9s; } @keyframes flash { 0% { background: rgba(184,255,60,.18); } 100% { background: transparent; } }
+
+  .center { display: flex; flex-direction: column; gap: 14px; }
+  .spread { text-align: center; }
+  .spread .big { font-family: var(--mono); font-size: 58px; font-weight: 700; line-height: 1; }
+  .spread .unit { color: var(--mute); font-size: 13px; margin-top: 6px; }
+  .bar { height: 10px; background: #161c2a; border-radius: 6px; margin: 16px 0 6px; position: relative; overflow: hidden; }
+  .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--good), var(--warn), var(--bad)); transition: width .5s; }
+  .bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .6; }
+  .barlbl { display: flex; justify-content: space-between; font-size: 11px; color: var(--mute); font-family: var(--mono); }
+  .state { font-family: var(--mono); font-size: 13px; text-align: center; margin-top: 10px; }
+  canvas { width: 100%; height: 170px; display: block; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--mute); justify-content: center; margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; background: currentColor; }
+
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin: 16px 0; }
+  @media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat .v { font-family: var(--mono); font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .stat .l { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--mute); }
+
+  .lower { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  @media (max-width: 1000px) { .lower { grid-template-columns: 1fr; } }
+  .feed { display: flex; flex-direction: column; gap: 12px; max-height: 640px; overflow: auto; }
+  .empty { color: var(--mute); font-size: 14px; padding: 30px 0; text-align: center; }
+  .arb { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #0b0e15; }
+  .arb.new { animation: flash 1.2s; }
+  .arb .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .arb .id { font-family: var(--mono); font-weight: 700; }
+  .arb .route { font-size: 13px; color: var(--mute); }
+  .chip { font-family: var(--mono); font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); }
+  .chip.ok { color: var(--good); border-color: rgba(54,227,154,.4); }
+  .chip.fail { color: var(--bad); border-color: rgba(255,92,108,.4); }
+  .chip.wait { color: var(--warn); border-color: rgba(255,196,77,.4); }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  @media (max-width: 700px) { .steps { grid-template-columns: 1fr 1fr; } }
+  .stepbox { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .stepbox .k { color: var(--mute); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .stepbox .t { font-family: var(--mono); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stepbox .t a { text-decoration: none; border-bottom: 1px dotted var(--mute); }
+  .stepbox .lat { font-family: var(--mono); color: var(--rx); font-size: 11px; margin-top: 2px; min-height: 14px; }
+  .arb .nums { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-family: var(--mono); font-size: 12px; color: var(--mute); }
+  .arb .nums b { color: var(--text); font-weight: 600; }
+  .pos { color: var(--good) !important; } .neg { color: var(--bad) !important; }
+
+  .whale label { font-size: 12px; color: var(--mute); display: block; margin: 10px 0 4px; }
+  .whale select, .whale input { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 14px; }
+  .btn { width: 100%; margin-top: 14px; padding: 12px; border-radius: 10px; border: 0; cursor: pointer; font-family: var(--sans); font-weight: 700; font-size: 15px; letter-spacing: .04em; background: linear-gradient(90deg, var(--uni), var(--base)); color: #fff; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); font-weight: 500; }
+  .btn:disabled { opacity: .5; cursor: wait; }
+  .log { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 12px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+  .how { font-size: 13px; color: var(--mute); line-height: 1.55; }
+  .how b { color: var(--text); }
+  footer { margin-top: 26px; color: var(--mute); font-size: 12px; text-align: center; }
+  .ticker { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 8px 12px; margin-bottom: 16px; overflow: hidden; }
+  .tick-label { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #07080c; background: var(--rx); padding: 3px 8px; border-radius: 6px; flex: none; }
+  .tick-track { overflow: hidden; flex: 1; mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  .tick-inner { display: flex; gap: 22px; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+  .tk { color: var(--text); } .tk.mute { color: var(--mute); } .tk b { font-weight: 600; }
+  .tk.new { animation: tkin .6s; } @keyframes tkin { from { opacity: 0; transform: translateX(-12px); } }
+  .loopcard { margin-top: 16px; }
+  .loopgrid { display: grid; grid-template-columns: 1fr 220px; gap: 16px; align-items: center; }
+  @media (max-width: 800px) { .loopgrid { grid-template-columns: 1fr; } }
+  #loopsvg { width: 100%; height: auto; display: block; }
+  #loopsvg g.hit rect { animation: nodehit 1s; }
+  @keyframes nodehit { 0% { stroke-width: 6; stroke-opacity: 1; } 100% { stroke-width: 1; } }
+  .stopwatch { text-align: center; border-left: 1px solid var(--line); padding-left: 16px; }
+  @media (max-width: 800px) { .stopwatch { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 12px; } }
+  .stopwatch .big { font-family: var(--mono); font-size: 48px; font-weight: 700; color: var(--rx); line-height: 1.1; margin: 6px 0; }
+  .stopwatch .l { font-size: 11px; color: var(--mute); letter-spacing: .12em; text-transform: uppercase; }
+  @media (max-width: 600px) { .price { font-size: 32px; } .spread .big { font-size: 46px; } h1 { font-size: 20px; } .wrap { padding: 16px 12px 40px; } }
+  .warnbox { border: 1px solid rgba(255,196,77,.4); color: var(--warn); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <a href="index.html" title="Home"><img src="logo.svg" alt="Parallax" style="width:44px;height:44px;display:block" /></a>
+      <div>
+        <h1>PARALLAX</h1>
+        <div class="tag">One asset · two chains · the gap closes itself — powered by Reactive Omni</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill"><span class="dot" id="dot-UNI"></span>Unichain</span>
+      <span class="pill"><span class="dot" id="dot-RX"></span>Reactive</span>
+      <span class="pill"><span class="dot" id="dot-BASE"></span>Base</span>
+      <a class="pill" id="rx-link" target="_blank" rel="noopener">brain ↗</a>
+      <a class="pill" href="index.html">← home</a>
+    </div>
+  </header>
+
+  <div class="ticker"><div class="tick-label">LIVE</div><div class="tick-track"><div class="tick-inner" id="ticker"><span class="tk mute">waiting for events from Lasna…</span></div></div></div>
+
+  <div class="warnbox" id="cfgwarn">No deployment found in <code>config.js</code>. Run <code>./scripts/deploy-all.sh</code>, then <code>make dashboard</code>.</div>
+
+  <div class="grid">
+    <div class="card venue uni" id="venue-UNI"></div>
+
+    <div class="center">
+      <div class="card spread">
+        <h3><span>Cross-chain spread</span><span class="badge" id="mirror">mirror —</span></h3>
+        <div class="big" id="spread">—</div>
+        <div class="unit">basis points between Unichain and Base</div>
+        <div class="bar"><i id="spreadbar"></i><b id="feeband"></b></div>
+        <div class="barlbl"><span>0</span><span id="feelbl">fee band 60 bps</span><span>500+</span></div>
+        <div class="state" id="state">connecting…</div>
+      </div>
+      <div class="card">
+        <h3><span>Price, live</span><span class="badge">pUSD / pWETH</span></h3>
+        <canvas id="chart" width="800" height="340"></canvas>
+        <div class="legend"><span style="color:var(--uni)">Unichain</span><span style="color:var(--base)">Base</span></div>
+      </div>
+    </div>
+
+    <div class="card venue base" id="venue-BASE"></div>
+  </div>
+
+  <div class="card loopcard">
+    <h3><span>Reactive loop · live</span><span class="badge" id="loopstate">idle</span></h3>
+    <div class="loopgrid">
+      <svg id="loopsvg" viewBox="0 0 900 170" xmlns="http://www.w3.org/2000/svg">
+        <path id="pUR" d="M150 85 C 260 20, 340 20, 380 70" fill="none" stroke="#ff3fa4" stroke-opacity=".25" stroke-width="2" stroke-dasharray="4 6"/>
+        <path id="pBR" d="M750 85 C 640 20, 560 20, 520 70" fill="none" stroke="#2f6bff" stroke-opacity=".3" stroke-width="2" stroke-dasharray="4 6"/>
+        <path id="pRU" d="M380 100 C 340 150, 260 150, 150 95" fill="none" stroke="#b8ff3c" stroke-opacity=".22" stroke-width="2" stroke-dasharray="4 6"/>
+        <path id="pRB" d="M520 100 C 560 150, 640 150, 750 95" fill="none" stroke="#b8ff3c" stroke-opacity=".22" stroke-width="2" stroke-dasharray="4 6"/>
+        <g id="nU"><rect x="20" y="55" width="130" height="60" rx="14" fill="#0e1220" stroke="#ff3fa4" stroke-opacity=".7"/>
+          <text x="85" y="82" text-anchor="middle" fill="#ff3fa4" font-family="Space Grotesk,sans-serif" font-size="16" font-weight="700">Unichain</text>
+          <text x="85" y="101" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="11" id="nUsub">pool + executor</text></g>
+        <g id="nR"><rect x="380" y="50" width="140" height="70" rx="16" fill="#0e1220" stroke="#b8ff3c" stroke-opacity=".7"/>
+          <text x="450" y="80" text-anchor="middle" fill="#b8ff3c" font-family="JetBrains Mono,monospace" font-size="13" font-weight="700">REACTIVE BRAIN</text>
+          <text x="450" y="100" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="11">Lasna · react()</text></g>
+        <g id="nB"><rect x="750" y="55" width="130" height="60" rx="14" fill="#0e1220" stroke="#2f6bff" stroke-opacity=".8"/>
+          <text x="815" y="82" text-anchor="middle" fill="#5b8cff" font-family="Space Grotesk,sans-serif" font-size="16" font-weight="700">Base</text>
+          <text x="815" y="101" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="11" id="nBsub">pool + executor</text></g>
+        <text x="265" y="22" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="10">Sync →</text>
+        <text x="635" y="22" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="10">← Sync</text>
+        <text x="265" y="164" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="10">← callback</text>
+        <text x="635" y="164" text-anchor="middle" fill="#7b8499" font-family="JetBrains Mono,monospace" font-size="10">callback →</text>
+      </svg>
+      <div class="stopwatch">
+        <div class="l">Last gap closed in</div>
+        <div class="big" id="sw">—</div>
+        <div class="l" id="swsub">origin event → both legs filled</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="card stat"><div class="l">Arbs fired</div><div class="v" id="s-opened">—</div></div>
+    <div class="card stat"><div class="l">Both legs filled</div><div class="v" id="s-filled">—</div></div>
+    <div class="card stat"><div class="l">Realised PnL</div><div class="v" id="s-pnl">—</div></div>
+    <div class="card stat"><div class="l">Avg detect → fire</div><div class="v" id="s-detect">—</div></div>
+    <div class="card stat"><div class="l">Avg fire → settled</div><div class="v" id="s-settle">—</div></div>
+  </div>
+
+  <div class="lower">
+    <div class="card">
+      <h3><span>Arbitrage loop — origin → reactive → two callbacks</span><span class="badge" id="evcount">0 events</span></h3>
+      <div class="feed" id="feed"><div class="empty">Waiting for the first dislocation. Use the whale panel to create one →</div></div>
+    </div>
+    <div class="card whale">
+      <h3><span>🐋 Whale panel</span><span class="badge" id="acct">not connected</span></h3>
+      <label>Market</label>
+      <select id="w-venue"><option value="BASE">Base Sepolia</option><option value="UNI">Unichain Sepolia</option></select>
+      <label>Action</label>
+      <select id="w-dir"><option value="dump">Dump pWETH (price ↓)</option><option value="pump">Pump with pUSD (price ↑)</option></select>
+      <label>Amount (pWETH for dump, pUSD for pump)</label>
+      <input id="w-amt" value="8" />
+      <button class="btn" id="w-go">Unleash the whale</button>
+      <div class="log" id="w-log"></div>
+      <h3 style="margin-top:22px"><span>How it works</span></h3>
+      <div class="how">
+        <b>1.</b> Both pools emit <code>Sync</code> on every trade. The reactive contract on Lasna mirrors both.<br/>
+        <b>2.</b> When the gap beats fees, it sizes the optimal trade in closed form and fires <b>two callbacks in one tx</b>: buy on the cheap chain, sell on the rich one.<br/>
+        <b>3.</b> Executors re-quote, enforce slippage + timestamp deadlines, swap, and report back.<br/>
+        <b>4.</b> The brain books PnL, unlocks, and re-checks the gap. No bots, no keepers.
+      </div>
+    </div>
+  </div>
+
+  <footer>Parallax · Reactive Omni Buildathon · Every Second Counts · testnet tokens only</footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const CFG = window.PARALLAX_CONFIG || { reactive: {}, venues: [] };
+  const FEE_BAND_BPS = 60;     // two 0.30% swaps
+  const BAR_MAX_BPS = 500;
+  const BACKFILL_BLOCKS = 6000; // ~100 min of Lasna history
+  const CHUNK = 1000;
+
+  const $ = (id) => document.getElementById(id);
+  const short = (h) => h ? h.slice(0, 6) + "…" + h.slice(-4) : "—";
+  const fmt = (n, d = 2) => Number.isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
+  const fromWei = (v) => Number(ethers.formatEther(v));
+  const hex32 = (v) => ethers.toBeHex(v, 32);
+  const VENUES = CFG.venues || [];
+  const byIdx = (i) => VENUES[Number(i)] || VENUES[0];
+  const ready = !!(CFG.reactive && CFG.reactive.address && VENUES.every(v => v.pool));
+
+  const poolAbi = ["function getReserves() view returns (uint112,uint112,uint32)"];
+  const execAbi = ["function inventory() view returns (uint256,uint256,uint256)", "function legsExecuted() view returns (uint256)", "function legsSkipped() view returns (uint256)"];
+  const tokenAbi = ["function mint(address,uint256)", "function approve(address,uint256) returns (bool)"];
+  const pairWriteAbi = ["function swapExactIn(address,uint256,uint256,address) returns (uint256)"];
+  const rxAbi = [
+    "function arbsOpened() view returns (uint256)",
+    "function arbsFullyFilled() view returns (uint256)",
+    "function cumulativePnlQuote() view returns (int256)",
+    "function activeArbId() view returns (uint256)",
+    "function paused() view returns (bool)",
+    "function currentSpreadBps() view returns (uint256)",
+    "event PriceObserved(uint8 indexed venue, uint256 reserveBase, uint256 reserveQuote, uint256 priceE18, uint256 spreadBps, uint256 originTxHash)",
+    "event ArbOpened(uint256 indexed arbId, uint8 cheapVenue, uint8 triggerVenue, uint256 quoteIn, uint256 baseAmount, uint256 expectedQuoteOut, uint256 spreadBps, uint256 originTxHash)",
+    "event LegConfirmed(uint256 indexed arbId, uint8 indexed venue, bool buyBase, uint256 amountIn, uint256 amountOut, uint256 legTxHash)",
+    "event LegFailed(uint256 indexed arbId, uint8 indexed venue, uint8 reason, uint256 legTxHash)",
+    "event ArbSettled(uint256 indexed arbId, int256 realizedQuote, int256 baseDrift, bool fullyFilled, uint256 secondsToSettle)",
+    "event ArbExpired(uint256 indexed arbId)",
+    "event CircuitBreakerTripped(uint256 indexed arbId, uint8 consecutivePartialFills)"
+  ];
+  const SKIP = ["none", "paused", "expired", "cooldown", "no inventory", "price moved", "swap failed", "duplicate"];
+  const rxIface = new ethers.Interface(rxAbi);
+
+  const mkProvider = (rpc, chainId) => new ethers.JsonRpcProvider(rpc, chainId, { staticNetwork: ethers.Network.from(chainId) });
+  const providers = {};
+  VENUES.forEach(v => providers[v.key] = mkProvider(v.rpc, v.chainId));
+  const rxProvider = CFG.reactive.rpc ? mkProvider(CFG.reactive.rpc, CFG.reactive.chainId) : null;
+
+  const explorerTx = (venueOrRx, hash) => `${venueOrRx.explorer}/tx/${hash}`;
+  const explorerAddr = (venueOrRx, a) => `${venueOrRx.explorer}/address/${a}`;
+
+  // ------------------------------------------------------------------ state
+  const state = { prices: {}, inv: {}, history: [], arbs: new Map(), lastRxBlock: null, events: 0, tsCache: new Map(), live: false, ticker: [] };
+
+  // ------------------------------------------------------------------ venue cards
+  function renderVenueShell(v) {
+    $("venue-" + v.key).innerHTML = `
+      <h3><span>${v.name}</span><span class="badge" id="rel-${v.key}">—</span></h3>
+      <div class="chain" style="color:var(--${v.key === "UNI" ? "uni" : "base"})">${v.short}</div>
+      <div class="price" id="price-${v.key}">—<small> pUSD</small></div>
+      <div class="delta" id="delta-${v.key}">&nbsp;</div>
+      <dl class="kv">
+        <dt>Pool</dt><dd><a target="_blank" rel="noopener" href="${explorerAddr(v, v.pool)}">${short(v.pool)}</a></dd>
+        <dt>Reserves</dt><dd id="res-${v.key}">—</dd>
+        <dt>Executor</dt><dd><a target="_blank" rel="noopener" href="${explorerAddr(v, v.executor)}">${short(v.executor)}</a></dd>
+        <dt>Inventory</dt><dd id="inv-${v.key}">—</dd>
+        <dt>Callback gas</dt><dd id="gas-${v.key}">—</dd>
+        <dt>Legs ok / skipped</dt><dd id="legs-${v.key}">—</dd>
+      </dl>
+      <div class="invbar-l">executor inventory value split (pWETH vs pUSD)</div>
+      <div class="invbar"><i id="invb-${v.key}" style="background:var(--${v.key === "UNI" ? "uni" : "base"})"></i></div>
+      <div class="barlbl"><span id="invl-${v.key}">—</span><span id="invr-${v.key}">—</span></div>`;
+  }
+
+  async function pollVenue(v) {
+    const p = providers[v.key];
+    try {
+      const pool = new ethers.Contract(v.pool, poolAbi, p);
+      const [r0, r1] = await pool.getReserves();
+      const base = fromWei(r0), quote = fromWei(r1);
+      const price = base > 0 ? quote / base : NaN;
+      const prev = state.prices[v.key];
+      state.prices[v.key] = price;
+      const el = $("price-" + v.key);
+      el.innerHTML = `${fmt(price, 2)}<small> pUSD</small>`;
+      if (prev !== undefined && Math.abs(prev - price) > 1e-9) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+      $("res-" + v.key).textContent = `${fmt(base, 2)} / ${fmt(quote, 0)}`;
+      $("dot-" + v.key).className = "dot live";
+    } catch (e) { $("dot-" + v.key).className = "dot off"; console.warn(v.key, e); }
+    if (!v.executor) return;
+    try {
+      const ex = new ethers.Contract(v.executor, execAbi, p);
+      const [[b, q, n], ok, sk] = await Promise.all([ex.inventory(), ex.legsExecuted(), ex.legsSkipped()]);
+      $("inv-" + v.key).textContent = `${fmt(fromWei(b), 2)} pWETH · ${fmt(fromWei(q), 0)} pUSD`;
+      $("gas-" + v.key).textContent = `${fmt(fromWei(n), 4)} ETH`;
+      $("legs-" + v.key).textContent = `${ok} / ${sk}`;
+      const px = state.prices[v.key];
+      if (Number.isFinite(px)) {
+        const bv = fromWei(b) * px, qv = fromWei(q), tot = bv + qv;
+        if (tot > 0) {
+          $("invb-" + v.key).style.width = (bv / tot * 100).toFixed(1) + "%";
+          $("invl-" + v.key).textContent = `pWETH ${fmt(bv / tot * 100, 0)}%`;
+          $("invr-" + v.key).textContent = `pUSD ${fmt(qv / tot * 100, 0)}% · $${fmt(tot, 0)}`;
+        }
+      }
+    } catch (e) { console.warn("executor", v.key, e); }
+  }
+
+  // ------------------------------------------------------------------ spread + chart
+  function renderSpread() {
+    const [a, b] = VENUES.map(v => state.prices[v.key]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+    const bps = Math.abs(a - b) / Math.min(a, b) * 1e4;
+    $("spread").textContent = fmt(bps, 0);
+    $("spread").style.color = bps > FEE_BAND_BPS ? "var(--warn)" : "var(--good)";
+    $("spreadbar").style.width = Math.min(100, bps / BAR_MAX_BPS * 100) + "%";
+    const cheapKey = a < b ? VENUES[0].key : VENUES[1].key;
+    VENUES.forEach((v, i) => {
+      const mine = i === 0 ? a : b, other = i === 0 ? b : a, d = (mine - other) / other * 100;
+      const de = $("delta-" + v.key);
+      de.textContent = `${d >= 0 ? "+" : ""}${fmt(d, 2)}% vs ${VENUES[1 - i].short}`;
+      de.className = "delta " + (Math.abs(d) < 0.005 ? "" : d > 0 ? "neg" : "pos");
+      const r = $("rel-" + v.key);
+      if (Math.abs(a - b) < 1e-9) { r.textContent = "in line"; r.className = "badge"; }
+      else if (v.key === cheapKey) { r.textContent = "cheap → buy"; r.className = "badge cheap"; }
+      else { r.textContent = "rich → sell"; r.className = "badge rich"; }
+    });
+    state.history.push({ t: Date.now(), a, b });
+    if (state.history.length > 400) state.history.shift();
+    drawChart();
+  }
+
+  function drawChart() {
+    const c = $("chart"), ctx = c.getContext("2d");
+    const W = c.width, H = c.height, pad = 34;
+    ctx.clearRect(0, 0, W, H);
+    const h = state.history;
+    if (h.length < 2) return;
+    let lo = Infinity, hi = -Infinity;
+    h.forEach(p => { lo = Math.min(lo, p.a, p.b); hi = Math.max(hi, p.a, p.b); });
+    if (hi - lo < 1) { hi += 1; lo -= 1; }
+    const span = hi - lo; lo -= span * 0.1; hi += span * 0.1;
+    const t0 = h[0].t, t1 = h[h.length - 1].t || t0 + 1;
+    const X = (t) => pad + (W - pad * 1.4) * ((t - t0) / Math.max(1, t1 - t0));
+    const Y = (p) => H - pad + 10 - (H - pad * 1.3) * ((p - lo) / (hi - lo));
+    ctx.strokeStyle = "#1f2636"; ctx.lineWidth = 1; ctx.fillStyle = "#7b8499"; ctx.font = "20px JetBrains Mono";
+    for (let i = 0; i <= 3; i++) {
+      const p = lo + (hi - lo) * i / 3, y = Y(p);
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.fillText(p.toFixed(0), 0, y - 4);
+    }
+    const line = (key, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.beginPath();
+      h.forEach((p, i) => { const x = X(p.t), y = Y(p[key]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke();
+    };
+    line("a", "#ff3fa4"); line("b", "#2f6bff");
+  }
+
+  // ------------------------------------------------------------------ reactive brain
+  async function pollReactive() {
+    if (!rxProvider) return;
+    const rx = new ethers.Contract(CFG.reactive.address, rxAbi, rxProvider);
+    try {
+      const [opened, filled, pnl, active, paused, mirror] = await Promise.all([
+        rx.arbsOpened(), rx.arbsFullyFilled(), rx.cumulativePnlQuote(), rx.activeArbId(), rx.paused(), rx.currentSpreadBps()
+      ]);
+      $("s-opened").textContent = opened.toString();
+      $("s-filled").textContent = filled.toString();
+      const pnlN = Number(ethers.formatEther(pnl));
+      $("s-pnl").textContent = (pnlN >= 0 ? "+" : "") + fmt(pnlN, 2);
+      $("s-pnl").className = "v " + (pnlN >= 0 ? "pos" : "neg");
+      $("mirror").textContent = `mirror ${mirror} bps`;
+      const st = $("state");
+      if (paused) { st.innerHTML = `<span class="neg">■ PAUSED</span> — circuit breaker or owner`; $("dot-RX").className = "dot off"; }
+      else if (active > 0n) { st.innerHTML = `<span style="color:var(--warn)">● ARB #${active} IN FLIGHT</span> — waiting for both legs`; $("dot-RX").className = "dot busy"; }
+      else { st.innerHTML = `<span class="pos">● WATCHING</span> — Sync events from both chains stream into react()`; $("dot-RX").className = "dot live"; }
+    } catch (e) { $("dot-RX").className = "dot off"; console.warn("reactive", e); }
+
+    try {
+      const latest = await rxProvider.getBlockNumber();
+      let from = state.lastRxBlock === null ? Math.max(0, latest - BACKFILL_BLOCKS) : state.lastRxBlock + 1;
+      while (from <= latest) {
+        const to = Math.min(latest, from + CHUNK - 1);
+        const logs = await rxProvider.getLogs({ address: CFG.reactive.address, fromBlock: from, toBlock: to });
+        logs.forEach(handleLog);
+        from = to + 1;
+        state.lastRxBlock = to;
+      }
+      $("evcount").textContent = `${state.events} events`;
+      state.live = true;
+    } catch (e) { console.warn("logs", e); }
+    renderFeed();
+  }
+
+  function arbOf(id) {
+    const k = id.toString();
+    if (!state.arbs.has(k)) state.arbs.set(k, { id: k, legs: {}, fresh: true });
+    return state.arbs.get(k);
+  }
+
+  function handleLog(log) {
+    let ev;
+    try { ev = rxIface.parseLog(log); } catch { return; }
+    if (!ev) return;
+    state.events++;
+    const a = ev.args;
+    tick(ev.name, a);
+    if (state.live) animate(ev.name, a);
+    switch (ev.name) {
+      case "ArbOpened": {
+        const arb = arbOf(a.arbId);
+        Object.assign(arb, {
+          cheap: Number(a.cheapVenue), trigger: Number(a.triggerVenue), quoteIn: fromWei(a.quoteIn), baseAmount: fromWei(a.baseAmount),
+          expectedOut: fromWei(a.expectedQuoteOut), spreadBps: Number(a.spreadBps), originTx: hex32(a.originTxHash),
+          rxTx: log.transactionHash, rxBlock: log.blockNumber
+        });
+        break;
+      }
+      case "LegConfirmed": arbOf(a.arbId).legs[Number(a.venue)] = { ok: true, buy: a.buyBase, in: fromWei(a.amountIn), out: fromWei(a.amountOut), tx: hex32(a.legTxHash) }; break;
+      case "LegFailed": arbOf(a.arbId).legs[Number(a.venue)] = { ok: false, reason: SKIP[Number(a.reason)] || ("code " + a.reason), tx: hex32(a.legTxHash) }; break;
+      case "ArbSettled": Object.assign(arbOf(a.arbId), { settled: true, pnl: fromWei(a.realizedQuote), filled: a.fullyFilled, secs: Number(a.secondsToSettle) }); break;
+      case "ArbExpired": arbOf(a.arbId).expired = true; break;
+      case "CircuitBreakerTripped": arbOf(a.arbId).breaker = true; break;
+    }
+  }
+
+  // timestamps for latency: origin block, reactive block, leg blocks
+  async function txTime(provider, hash) {
+    const k = provider === rxProvider ? "rx:" + hash : hash;
+    if (state.tsCache.has(k)) return state.tsCache.get(k);
+    state.tsCache.set(k, null);
+    try {
+      const r = await provider.getTransactionReceipt(hash);
+      if (!r) { state.tsCache.delete(k); return null; }
+      const b = await provider.getBlock(r.blockNumber);
+      state.tsCache.set(k, b.timestamp);
+      return b.timestamp;
+    } catch { state.tsCache.delete(k); return null; }
+  }
+
+  async function enrichLatency(arb) {
+    if (!arb.rxTx || arb.latencyDone) return;
+    const origin = byIdx(arb.trigger);
+    const [tO, tR] = await Promise.all([txTime(providers[origin.key], arb.originTx), txTime(rxProvider, arb.rxTx)]);
+    arb.tOrigin = tO; arb.tRx = tR;
+    for (const i of [0, 1]) {
+      const leg = arb.legs[i];
+      if (leg && leg.tx && !leg.t) leg.t = await txTime(providers[byIdx(i).key], leg.tx);
+    }
+    arb.latencyDone = arb.tOrigin && arb.tRx && arb.settled && [0, 1].every(i => !arb.legs[i] || arb.legs[i].t);
+  }
+
+  // ------------------------------------------------------------------ ticker + loop animation
+  const vname = (i) => byIdx(i).short;
+  function tick(name, a) {
+    let html = null;
+    switch (name) {
+      case "PriceObserved": html = `<span style="color:var(--${Number(a.venue) === 0 ? "uni" : "base"})">SYNC</span> ${vname(a.venue)} <b>${fmt(Number(ethers.formatEther(a.priceE18)), 2)}</b> · gap ${a.spreadBps} bps`; break;
+      case "ArbOpened": html = `<span style="color:var(--warn)">⚡ ARB #${a.arbId}</span> buy ${vname(a.cheapVenue)} · ${fmt(fromWei(a.quoteIn), 0)} pUSD`; break;
+      case "LegConfirmed": html = `<span class="pos">✓ LEG</span> #${a.arbId} ${vname(a.venue)} ${a.buyBase ? "bought" : "sold"} ${fmt(fromWei(a.buyBase ? a.amountOut : a.amountIn), 3)} pWETH`; break;
+      case "LegFailed": html = `<span class="neg">✗ LEG</span> #${a.arbId} ${vname(a.venue)} ${SKIP[Number(a.reason)] || ""}`; break;
+      case "ArbSettled": { const p = fromWei(a.realizedQuote); html = `<span style="color:var(--rx)">■ SETTLED</span> #${a.arbId} <b class="${p >= 0 ? "pos" : "neg"}">${p >= 0 ? "+" : ""}${fmt(p, 2)}</b> in ${a.secondsToSettle}s`; break; }
+      case "CircuitBreakerTripped": html = `<span class="neg">⛔ BREAKER</span> after #${a.arbId}`; break;
+      default: return;
+    }
+    state.ticker.unshift(html);
+    if (state.ticker.length > 24) state.ticker.pop();
+    state.tickerDirty = true;
+  }
+  function renderTicker() {
+    if (!state.tickerDirty) return;
+    state.tickerDirty = false;
+    $("ticker").innerHTML = state.ticker.map((h, i) => `<span class="tk ${i === 0 && state.live ? "new" : ""}">${h}</span>`).join("");
+  }
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function pulse(pathId, color, delay) {
+    setTimeout(() => {
+      const svg = $("loopsvg");
+      if (!svg) return;
+      const c = document.createElementNS(SVGNS, "circle");
+      c.setAttribute("r", "7"); c.setAttribute("fill", color);
+      c.style.filter = `drop-shadow(0 0 6px ${color})`;
+      const m = document.createElementNS(SVGNS, "animateMotion");
+      m.setAttribute("dur", "0.9s"); m.setAttribute("fill", "freeze"); m.setAttribute("begin", "indefinite");
+      const mp = document.createElementNS(SVGNS, "mpath");
+      mp.setAttribute("href", "#" + pathId);
+      m.appendChild(mp); c.appendChild(m); svg.appendChild(c);
+      try { m.beginElement(); } catch (e) { /* older browsers */ }
+      setTimeout(() => c.remove(), 1000);
+    }, delay || 0);
+  }
+  function hit(id, delay) {
+    setTimeout(() => { const g = $(id); if (!g) return; g.classList.remove("hit"); void g.getBBox(); g.classList.add("hit"); }, delay || 0);
+  }
+  function animate(name, a) {
+    if (name === "PriceObserved") {
+      const u = Number(a.venue) === 0;
+      pulse(u ? "pUR" : "pBR", u ? "#ff3fa4" : "#5b8cff", 0); hit("nR", 850);
+    } else if (name === "ArbOpened") {
+      $("loopstate").textContent = `arb #${a.arbId} firing`;
+      $("loopstate").className = "badge rich";
+      hit("nR", 850);
+      pulse("pRU", "#b8ff3c", 950); pulse("pRB", "#b8ff3c", 950);
+      hit("nU", 1850); hit("nB", 1850);
+    } else if (name === "ArbSettled") {
+      $("loopstate").textContent = `arb #${a.arbId} settled`;
+      $("loopstate").className = "badge cheap";
+    }
+  }
+  function renderStopwatch(list) {
+    const done = list.find(a => a.settled && a.tOrigin && [0, 1].every(i => a.legs[i] && a.legs[i].t));
+    if (done) {
+      const secs = Math.max(0, Math.max(done.legs[0].t, done.legs[1].t) - done.tOrigin);
+      $("sw").textContent = secs < 1 ? "<1 s" : secs.toFixed(1) + " s";
+      $("swsub").textContent = `arb #${done.id} · origin → both legs filled`;
+    } else {
+      const s = list.find(a => a.settled && a.secs !== undefined);
+      if (s) { $("sw").textContent = s.secs.toFixed(1) + " s"; $("swsub").textContent = `arb #${s.id} · reactive fire → settled`; }
+    }
+  }
+
+  function lat(t, base) { return (t && base) ? `+${Math.max(0, t - base)}s` : ""; }
+
+  function renderFeed() {
+    renderTicker();
+    const list = [...state.arbs.values()].filter(a => a.rxTx).sort((x, y) => Number(y.id) - Number(x.id)).slice(0, 25);
+    if (!list.length) return;
+    renderStopwatch(list);
+    const feed = $("feed");
+    feed.innerHTML = list.map(arb => {
+      const cheap = byIdx(arb.cheap), rich = byIdx(arb.cheap === 0 ? 1 : 0), origin = byIdx(arb.trigger);
+      let status = `<span class="chip wait">in flight</span>`;
+      if (arb.settled) status = arb.filled ? `<span class="chip ok">settled · both legs</span>` : `<span class="chip fail">partial fill</span>`;
+      else if (arb.expired) status = `<span class="chip fail">expired</span>`;
+      if (arb.breaker) status += ` <span class="chip fail">breaker tripped</span>`;
+      const legBox = (i, label) => {
+        const v = byIdx(i), leg = arb.legs[i];
+        if (!leg) return `<div class="stepbox"><div class="k">${label} · ${v.short}</div><div class="t">waiting…</div><div class="lat"></div></div>`;
+        const body = leg.ok
+          ? `${leg.buy ? "bought" : "sold"} ${fmt(leg.buy ? leg.out : leg.in, 3)} pWETH`
+          : `skipped: ${leg.reason}`;
+        return `<div class="stepbox"><div class="k">${label} · ${v.short} ${leg.ok ? "✓" : "✗"}</div>
+                <div class="t"><a target="_blank" rel="noopener" href="${explorerTx(v, leg.tx)}">${short(leg.tx)}</a> ${body}</div>
+                <div class="lat">${lat(leg.t, arb.tOrigin)}</div></div>`;
+      };
+      const pnl = arb.settled ? `<span>realised <b class="${arb.pnl >= 0 ? "pos" : "neg"}">${arb.pnl >= 0 ? "+" : ""}${fmt(arb.pnl, 2)} pUSD</b></span>` : "";
+      return `<div class="arb ${arb.fresh ? "new" : ""}">
+        <div class="top"><span class="id">ARB #${arb.id}</span>
+          <span class="route">buy on <b style="color:var(--${cheap.key === "UNI" ? "uni" : "base"})">${cheap.short}</b> → sell on <b style="color:var(--${rich.key === "UNI" ? "uni" : "base"})">${rich.short}</b></span>
+          <span>${status}</span></div>
+        <div class="steps">
+          <div class="stepbox"><div class="k">① origin · ${origin.short}</div><div class="t"><a target="_blank" rel="noopener" href="${explorerTx(origin, arb.originTx)}">${short(arb.originTx)}</a> Sync</div><div class="lat">t = 0</div></div>
+          <div class="stepbox"><div class="k">② reactive · Lasna</div><div class="t"><a target="_blank" rel="noopener" href="${explorerTx(CFG.reactive, arb.rxTx)}">${short(arb.rxTx)}</a> 2 callbacks</div><div class="lat">${lat(arb.tRx, arb.tOrigin)}</div></div>
+          ${legBox(arb.cheap, "③ buy leg")}
+          ${legBox(arb.cheap === 0 ? 1 : 0, "④ sell leg")}
+        </div>
+        <div class="nums"><span>gap <b>${arb.spreadBps} bps</b></span><span>size <b>${fmt(arb.quoteIn, 0)} pUSD</b></span><span>expected <b>+${fmt(arb.expectedOut - arb.quoteIn, 2)}</b></span>${pnl}${arb.secs !== undefined ? `<span>reactive settle <b>${arb.secs}s</b></span>` : ""}</div>
+      </div>`;
+    }).join("");
+    list.forEach(a => { a.fresh = false; enrichLatency(a).catch(() => {}); });
+
+    const det = list.filter(a => a.tOrigin && a.tRx).map(a => Math.max(0, a.tRx - a.tOrigin));
+    if (det.length) $("s-detect").textContent = fmt(det.reduce((x, y) => x + y, 0) / det.length, 1) + "s";
+    const st = list.filter(a => a.settled && a.secs !== undefined).map(a => a.secs);
+    if (st.length) $("s-settle").textContent = fmt(st.reduce((x, y) => x + y, 0) / st.length, 1) + "s";
+  }
+
+  // ------------------------------------------------------------------ whale (MetaMask)
+  const wlog = (m) => { const el = $("w-log"); el.textContent = `[${new Date().toLocaleTimeString()}] ${m}\n` + el.textContent; };
+
+  async function ensureChain(v) {
+    const id = "0x" + v.chainId.toString(16);
+    try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: id }] }); }
+    catch (e) {
+      if (e && (e.code === 4902 || (e.data && e.data.originalError && e.data.originalError.code === 4902))) {
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+          chainId: id, chainName: v.name, rpcUrls: [v.rpc], blockExplorerUrls: [v.explorer],
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 } }] });
+      } else throw e;
+    }
+  }
+
+  async function whale() {
+    if (!window.ethereum) { wlog("No wallet found — install MetaMask, or use ./scripts/whale.sh"); return; }
+    const v = VENUES.find(x => x.key === $("w-venue").value);
+    const dump = $("w-dir").value === "dump";
+    const btn = $("w-go");
+    btn.disabled = true;
+    try {
+      const amount = ethers.parseEther(($("w-amt").value || "0").trim());
+      if (amount <= 0n) throw new Error("amount must be > 0");
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      await ensureChain(v);
+      const signer = await new ethers.BrowserProvider(window.ethereum).getSigner();
+      const me = await signer.getAddress();
+      $("acct").textContent = short(me);
+      const tokenAddr = dump ? v.base : v.quote;
+      const token = new ethers.Contract(tokenAddr, tokenAbi, signer);
+      const pair = new ethers.Contract(v.pool, pairWriteAbi, signer);
+      wlog(`1/3 minting test ${dump ? "pWETH" : "pUSD"}…`);
+      await (await token.mint(me, amount)).wait();
+      wlog("2/3 approving pool…");
+      await (await token.approve(v.pool, amount)).wait();
+      wlog(`3/3 swapping on ${v.short}…`);
+      const tx = await pair.swapExactIn(tokenAddr, amount, 0n, me);
+      wlog(`🐋 origin tx ${short(tx.hash)} — watch the feed`);
+      await tx.wait();
+      wlog("whale swap confirmed. Parallax reacts on the Sync event.");
+    } catch (e) { wlog("✗ " + (e.shortMessage || e.message || e)); }
+    finally { btn.disabled = false; }
+  }
+
+  // ------------------------------------------------------------------ boot
+  function boot() {
+    $("feeband").style.left = (FEE_BAND_BPS / BAR_MAX_BPS * 100) + "%";
+    $("feelbl").textContent = `fee band ${FEE_BAND_BPS} bps`;
+    $("w-go").addEventListener("click", whale);
+    if (!ready) { $("cfgwarn").style.display = "block"; $("state").textContent = "not deployed yet"; return; }
+    $("rx-link").href = explorerAddr(CFG.reactive, CFG.reactive.address);
+    VENUES.forEach(renderVenueShell);
+    let busy = false;
+    const tick = async () => {
+      if (busy) return; busy = true;
+      try {
+        await Promise.all(VENUES.map(pollVenue));
+        renderSpread();
+        await pollReactive();
+      } finally { busy = false; }
+    };
+    tick();
+    setInterval(tick, CFG.pollMs || 2000);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
