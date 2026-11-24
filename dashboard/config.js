@@ -5,6 +5,7 @@ window.PARALLAX_CONFIG = {
     chainId: 5318007,
     rpc: "https://lasna-rpc.rnk.dev/",
     address: "0x7CF7EAa45e9AD5a2CAe51B249C2722EFAD001ba2",
+    startBlock: 9125000,
     explorer: "https://lasna.reactscan.net"
   },
   venues: [

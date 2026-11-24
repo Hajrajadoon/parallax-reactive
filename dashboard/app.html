@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-<script src="config.js"></script>
+<script>document.write('<script src="config.js?t=' + Date.now() + '"><\/script>');</script>
 <style>
   :root {
     --bg: #07080c; --panel: #0e1118; --panel2: #131826; --line: #1f2636; --text: #e8ecf5; --mute: #7b8499;
@@ -242,8 +242,8 @@
   const CFG = window.PARALLAX_CONFIG || { reactive: {}, venues: [] };
   const FEE_BAND_BPS = 60;     // two 0.30% swaps
   const BAR_MAX_BPS = 500;
-  const BACKFILL_BLOCKS = 6000; // ~100 min of Lasna history
-  const CHUNK = 1000;
+  const BACKFILL_BLOCKS = 6000; // fallback window when config.js has no startBlock
+  let chunk = 50000;            // adaptive: shrinks automatically if the RPC rejects large ranges
 
   const $ = (id) => document.getElementById(id);
   const short = (h) => h ? h.slice(0, 6) + "…" + h.slice(-4) : "—";
@@ -414,13 +414,22 @@
 
     try {
       const latest = await rxProvider.getBlockNumber();
-      let from = state.lastRxBlock === null ? Math.max(0, latest - BACKFILL_BLOCKS) : state.lastRxBlock + 1;
+      const start = Number(CFG.reactive.startBlock) > 0 ? Number(CFG.reactive.startBlock) : Math.max(0, latest - BACKFILL_BLOCKS);
+      let from = state.lastRxBlock === null ? start : state.lastRxBlock + 1;
+      const first = state.lastRxBlock === null;
       while (from <= latest) {
-        const to = Math.min(latest, from + CHUNK - 1);
-        const logs = await rxProvider.getLogs({ address: CFG.reactive.address, fromBlock: from, toBlock: to });
+        const to = Math.min(latest, from + chunk - 1);
+        let logs;
+        try {
+          logs = await rxProvider.getLogs({ address: CFG.reactive.address, fromBlock: from, toBlock: to });
+        } catch (err) {
+          if (chunk > 500) { chunk = Math.max(500, Math.floor(chunk / 4)); continue; } // range too big: retry smaller
+          throw err;
+        }
         logs.forEach(handleLog);
         from = to + 1;
         state.lastRxBlock = to;
+        if (first && latest > start) $("evcount").textContent = `loading history ${Math.min(100, Math.round((to - start) / (latest - start) * 100))}%`;
       }
       $("evcount").textContent = `${state.events} events`;
       state.live = true;
